@@ -1,0 +1,4 @@
+#!/bin/sh
+
+cd resources
+java -cp ../build/classes/main/ SecureServer
