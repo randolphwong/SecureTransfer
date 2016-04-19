@@ -32,8 +32,8 @@ public class SecureServer {
     }
 
     public static void main (String [] args ) throws Exception {
-        DataInputStream socketInStream = null;
-        DataOutputStream socketOutStream = null;
+        SecureInputStream socketInStream = null;
+        SecureOutputStream socketOutStream = null;
         ObjectOutputStream objectOutStream = null;
         BufferedOutputStream fileOutStream = null;
         ServerSocket servsock = null;
@@ -50,9 +50,10 @@ public class SecureServer {
                 try {
                     sock = servsock.accept();
                     System.out.println("Accepted connection : " + sock);
-                    socketOutStream = new DataOutputStream(new BufferedOutputStream(sock.getOutputStream()));
-                    socketInStream = new DataInputStream(new BufferedInputStream(sock.getInputStream()));
-                    objectOutStream = new ObjectOutputStream(sock.getOutputStream());
+                    socketOutStream = new SecureOutputStream(sock.getOutputStream());
+                    socketInStream = new SecureInputStream(sock.getInputStream());
+                    socketOutStream.setupRSA(rsaPrivateKey);
+                    socketInStream.setupRSA(rsaPrivateKey);
 
                     // server listen for "proof"
                     clientMsg = socketInStream.readUTF();
@@ -65,9 +66,7 @@ public class SecureServer {
                     // server send signed message ("server")
                     System.out.println("client requesting for proof");
                     System.out.println("sending client rsa key");
-                    rsaCipher.init(Cipher.ENCRYPT_MODE, rsaPrivateKey);
-                    byte[] signedMessage = rsaCipher.doFinal(serverMsg.getBytes());
-                    socketOutStream.write(signedMessage, 0, signedMessage.length);
+                    socketOutStream.secureWriteUTF(serverMsg);
                     socketOutStream.flush();
 
                     // server listen for "cert"
@@ -81,27 +80,16 @@ public class SecureServer {
                     System.out.println("client requesting for cert");
                     System.out.println("sending client cert");
                     X509Certificate serverCert = getCert("secStore.crt");
-                    objectOutStream.writeObject(serverCert);
+                    socketOutStream.writeCert(serverCert);
 
                     // server listen for nonce
-                    byte[] encryptedNonce = new byte[128];
-                    int bytesRead = socketInStream.read(encryptedNonce,0,encryptedNonce.length);
-                    System.out.println("received encrpyted nonce: " + bytesRead + " bytes read.");
-
-                    // decrypt nonce and sign it
-                    System.out.println("replying with signed nonce");
-                    rsaCipher.init(Cipher.DECRYPT_MODE, rsaPrivateKey);
-                    byte[] decryptedNonce = rsaCipher.doFinal(encryptedNonce);
-
-                    rsaCipher.init(Cipher.ENCRYPT_MODE, rsaPrivateKey);
-                    byte[] signedNonce = rsaCipher.doFinal(decryptedNonce);
-                    socketOutStream.write(signedNonce, 0, signedNonce.length);
+                    String nonce = socketInStream.secureReadUTF();
+                    System.out.println("received nonce: ");
+                    socketOutStream.secureWriteUTF(nonce);
                     socketOutStream.flush();
 
                     // server listen for file upload
-                    socketInStream.read(clientByte, 0, clientByte.length);
-                    rsaCipher.init(Cipher.DECRYPT_MODE, rsaPrivateKey);
-                    clientMsg = new String(rsaCipher.doFinal(clientByte));
+                    clientMsg = socketInStream.secureReadUTF();
                     if (!clientMsg.equals("file")) {
                         System.err.println("expected: \"file\"");
                         System.exit(-1);
@@ -109,24 +97,20 @@ public class SecureServer {
 
                     // server listen for filename
                     System.out.println("client preparing to send file.");
-                    socketInStream.read(clientByte, 0, clientByte.length);
-                    String filename = new String(rsaCipher.doFinal(clientByte));
+                    String filename = socketInStream.secureReadUTF();
                     System.out.println("filename received: " + filename);
 
                     // server listen for filesize
-                    socketInStream.read(clientByte, 0, clientByte.length);
-                    Long fileSize = (Long) Serializer.deserialize(rsaCipher.doFinal(clientByte));
+                    Long fileSize = socketInStream.secureReadLong();
                     System.out.println(fileSize + " to be transferred over.");
 
                     // open file to write
                     fileOutStream = new BufferedOutputStream(new FileOutputStream(new File("upload", filename)));
 
                     // prepare for decryption
-                    rsaCipher.init(Cipher.DECRYPT_MODE, rsaPrivateKey);
-                    byte[] encryptedFilePart = new byte[128];
-
-                    while ((bytesRead = socketInStream.read(encryptedFilePart, 0, encryptedFilePart.length)) > 0) {
-                        byte[] decryptedFilePart = rsaCipher.doFinal(encryptedFilePart);
+                    byte[] decryptedFilePart;
+                    while (fileSize > 0) {
+                        decryptedFilePart = socketInStream.secureRead();
                         if (fileSize < 117) {
                             fileOutStream.write(decryptedFilePart, 0, fileSize.intValue());
                         } else {
@@ -141,7 +125,7 @@ public class SecureServer {
 
                     // server notify client that file has been uploaded
                     System.out.println("file uploaded, notifying client");
-                    socketOutStream.writeUTF(uploadedMsg);
+                    socketOutStream.secureWriteUTF(uploadedMsg);
                     socketOutStream.flush();
 
                 } catch (Exception e) {
@@ -149,7 +133,6 @@ public class SecureServer {
                 } finally {
                     if (socketInStream != null) socketInStream.close();
                     if (socketOutStream != null) socketOutStream.close();
-                    if (objectOutStream != null) objectOutStream.close();
                     if (fileOutStream != null) fileOutStream.close();
                     if (sock!=null) sock.close();
                 }

@@ -49,28 +49,26 @@ public class SecureClient {
         }
 
         int bytesRead;
-        DataOutputStream socketOutStream = null;
-        DataInputStream socketInStream = null;
-        ObjectInputStream objectInStream = null;
+        SecureOutputStream socketOutStream = null;
+        SecureInputStream socketInStream = null;
         BufferedInputStream fileInStream = null;
         Socket sock = null;
         PublicKey serverKey = null;
         Random random = new Random();
         byte[] serverProof = new byte[128];
-        byte[] serialisedMsg = null;
 
         try {
             sock = new Socket(SERVER, SOCKET_PORT);
             System.out.println("Connected");
-            socketOutStream = new DataOutputStream(new BufferedOutputStream(sock.getOutputStream()));
-            socketInStream = new DataInputStream(new BufferedInputStream(sock.getInputStream()));
-            objectInStream = new ObjectInputStream(sock.getInputStream());
+            socketOutStream = new SecureOutputStream(sock.getOutputStream());
+            System.out.println("hi");
 
             // client ask for proof
             System.out.println("sending to server: \"" + proofMsg + "\"");
             socketOutStream.writeUTF(proofMsg);
             socketOutStream.flush();
 
+            socketInStream = new SecureInputStream(sock.getInputStream());
             // client receive proof message
             bytesRead = socketInStream.read(serverProof,0,serverProof.length);
             System.out.println("received proof: " + bytesRead + " bytes read.");
@@ -81,7 +79,7 @@ public class SecureClient {
             socketOutStream.flush();
 
             // client receive cert
-            X509Certificate cert = (X509Certificate) objectInStream.readObject();
+            X509Certificate cert = socketInStream.readCert();
             System.out.println("received certificate");
 
             // verify certificate
@@ -95,6 +93,9 @@ public class SecureClient {
 
             // extract public key
             serverKey = cert.getPublicKey();
+            socketOutStream.setupRSA(serverKey);
+            socketInStream.setupRSA(serverKey);
+
 
             // verify server's initial message
             Cipher rsaCipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
@@ -105,27 +106,18 @@ public class SecureClient {
                 System.exit(-1);
             }
 
-            // encrypt nonce
-            rsaCipher.init(Cipher.ENCRYPT_MODE, serverKey);
-            String nonceMsg = Long.toString(random.nextLong());
-            byte[] encryptedNonce = rsaCipher.doFinal(nonceMsg.getBytes());
-
             // send encrypted nonce
-            System.out.println("sending to encrypted nonce: " + nonceMsg);
-            socketOutStream.write(encryptedNonce, 0, encryptedNonce.length);
+            String nonceMsg = Long.toString(random.nextLong());
+            System.out.println("sending encrypted nonce: " + nonceMsg);
+            socketOutStream.secureWriteUTF(nonceMsg);
             socketOutStream.flush();
 
             // client listen for signed nonce
-            byte[] signedNonce = new byte[128];
-            bytesRead = socketInStream.read(signedNonce,0,signedNonce.length);
-            System.out.println("received signed nonce");
+            String receivedNonce = socketInStream.secureReadUTF();
+            System.out.println("received nonce: " + receivedNonce);
 
-            // un-sign nonce and verify
-            System.out.println("verifying nonce");
-            rsaCipher.init(Cipher.DECRYPT_MODE, serverKey);
-            String unsignedNonce = new String(rsaCipher.doFinal(signedNonce));
-            System.out.println("unsignedNonce: " + unsignedNonce);
-            if (unsignedNonce.equals(nonceMsg)) {
+            // verify nonce
+            if (receivedNonce.equals(nonceMsg)) {
                 System.out.println("nonce verification sucessful");
             } else {
                 System.out.println("verification failed");
@@ -138,23 +130,19 @@ public class SecureClient {
  
             // client notify server that it will start sending files
             System.out.println("sending to server: \"" + fileMsg + "\"");
-            rsaCipher.init(Cipher.ENCRYPT_MODE, serverKey);
-            byte[] encryptedMsg = rsaCipher.doFinal(fileMsg.getBytes());
-            socketOutStream.write(encryptedMsg, 0, encryptedMsg.length);
+            socketOutStream.secureWriteUTF(fileMsg);
             socketOutStream.flush();
 
             // client notify server of name of file
             String filename = file.getName();
             System.out.println("sending to server: \"" + filename + "\"");
-            encryptedMsg = rsaCipher.doFinal(filename.getBytes());
-            socketOutStream.write(encryptedMsg, 0, encryptedMsg.length);
+            socketOutStream.secureWriteUTF(filename);
             socketOutStream.flush();
 
             // send server file size
             Long fileSize = file.length();
-            encryptedMsg = rsaCipher.doFinal(Serializer.serialize(fileSize));
             System.out.println("sending to server: \"" + fileSize + "\"");
-            socketOutStream.write(encryptedMsg, 0, encryptedMsg.length);
+            socketOutStream.secureWriteLong(fileSize);
             socketOutStream.flush();
 
             // split files up, encrypt and send to server
@@ -166,14 +154,13 @@ public class SecureClient {
             startTime = System.currentTimeMillis();
 
             while ((bytesRead = fileInStream.read(filePart, 0, filePart.length)) > 0) {
-                encryptedFilePart = rsaCipher.doFinal(filePart);
-                socketOutStream.write(encryptedFilePart, 0, encryptedFilePart.length);
+                socketOutStream.secureWrite(filePart);
                 socketOutStream.flush();
             }
 
             // client listen for successful upload notification
             System.out.println("waiting for server's acknowledgement");
-            String serverMsg = socketInStream.readUTF();
+            String serverMsg = socketInStream.secureReadUTF();
             if (!serverMsg.equals("uploaded")) {
                 System.err.println("file upload failed.");
                 System.exit(-1);
@@ -188,7 +175,6 @@ public class SecureClient {
         } finally {
             if (socketInStream != null) socketInStream.close();
             if (socketOutStream != null) socketOutStream.close();
-            if (objectInStream != null) objectInStream.close();
             if (fileInStream != null) fileInStream.close();
             if (sock != null) sock.close();
         }
