@@ -4,7 +4,9 @@ if [ "$#" -eq 0 ]
 then
    echo Usage: $0 filename
 else
+    base=$(basename $1)
+    abspath=$(cd "$(dirname "$1")"; pwd)"/"$base
     cd resources
-    java -cp ../build/classes/main/ SecureClient $1
+    java -cp ../build/classes/main/ SecureClient "$abspath"
 fi
 
