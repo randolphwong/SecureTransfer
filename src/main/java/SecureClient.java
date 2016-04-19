@@ -64,6 +64,7 @@ public class SecureClient {
             System.out.println("Connected");
             socketOutStream = new DataOutputStream(new BufferedOutputStream(sock.getOutputStream()));
             socketInStream = new DataInputStream(new BufferedInputStream(sock.getInputStream()));
+            objectInStream = new ObjectInputStream(sock.getInputStream());
 
             // client ask for proof
             System.out.println("sending to server: \"" + proofMsg + "\"");
@@ -80,7 +81,6 @@ public class SecureClient {
             socketOutStream.flush();
 
             // client receive cert
-            objectInStream = new ObjectInputStream(sock.getInputStream());
             X509Certificate cert = (X509Certificate) objectInStream.readObject();
             System.out.println("received certificate");
 
@@ -138,17 +138,23 @@ public class SecureClient {
  
             // client notify server that it will start sending files
             System.out.println("sending to server: \"" + fileMsg + "\"");
-            socketOutStream.writeUTF(fileMsg);
+            rsaCipher.init(Cipher.ENCRYPT_MODE, serverKey);
+            byte[] encryptedMsg = rsaCipher.doFinal(fileMsg.getBytes());
+            socketOutStream.write(encryptedMsg, 0, encryptedMsg.length);
             socketOutStream.flush();
 
             // client notify server of name of file
-            socketOutStream.writeUTF(file.getName());
+            String filename = file.getName();
+            System.out.println("sending to server: \"" + filename + "\"");
+            encryptedMsg = rsaCipher.doFinal(filename.getBytes());
+            socketOutStream.write(encryptedMsg, 0, encryptedMsg.length);
             socketOutStream.flush();
 
             // send server file size
-            long fileSize = file.length();
+            Long fileSize = file.length();
+            encryptedMsg = rsaCipher.doFinal(Serializer.serialize(fileSize));
             System.out.println("sending to server: \"" + fileSize + "\"");
-            socketOutStream.writeLong(fileSize);
+            socketOutStream.write(encryptedMsg, 0, encryptedMsg.length);
             socketOutStream.flush();
 
             // split files up, encrypt and send to server
