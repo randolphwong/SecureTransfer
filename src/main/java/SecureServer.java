@@ -11,6 +11,8 @@ import java.io.*;
 import java.net.ServerSocket;
 import java.util.Arrays;
 import java.net.Socket;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import javax.crypto.Cipher;
 import java.security.*;
@@ -32,7 +34,9 @@ public class SecureServer {
     }
 
     public static void main (String [] args ) throws Exception {
+        ExecutorService exec = Executors.newCachedThreadPool();
         ServerSocket servsock = null;
+        int i = 0;
         try {
             rsaPrivateKey = PrivateKeyReader.get("privateServer.der");
             cert = getCert("secStore.crt");
@@ -40,8 +44,8 @@ public class SecureServer {
 
             while (true) {
                 Socket sock = servsock.accept();
-
-                new Thread(new ClientHandler(sock)).start();
+                exec.submit(new ClientHandler(sock, ++i));
+                //new Thread(new ClientHandler(sock, ++i)).start();
             }
         } finally {
             if (servsock != null) servsock.close();
@@ -61,9 +65,11 @@ class ClientHandler implements Runnable {
     private Socket sock;
     private String clientMsg;
     private byte[] clientByte;
+    private int id;
 
-    public ClientHandler(Socket sock) {
+    public ClientHandler(Socket sock, int id) {
         this.sock = sock;
+        this.id = id;
         clientByte = new byte[128];
     }
 
@@ -73,6 +79,8 @@ class ClientHandler implements Runnable {
             socketInStream = new SecureInputStream(sock.getInputStream());
             socketOutStream.setupRSA(SecureServer.rsaPrivateKey);
             socketInStream.setupRSA(SecureServer.rsaPrivateKey);
+
+            System.out.println("handling client " + id);
 
             // server listen for "proof"
             clientMsg = socketInStream.readUTF();
@@ -102,7 +110,7 @@ class ClientHandler implements Runnable {
 
             // server listen for nonce
             String nonce = socketInStream.secureReadUTF();
-            System.out.println("received nonce: ");
+            System.out.println("received nonce: " + nonce);
             socketOutStream.secureWriteUTF(nonce);
             socketOutStream.flush();
 
@@ -146,9 +154,10 @@ class ClientHandler implements Runnable {
             socketOutStream.secureWriteUTF(uploadedMsg);
             socketOutStream.flush();
 
-            System.out.println("session complete");
+            System.out.println("client " + id + " session complete");
             System.out.println();
         } catch (Exception e) {
+            System.err.println("client " + id + " upload failed.");
             e.printStackTrace();
         } finally {
             try {
