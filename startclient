@@ -1,4 +1,10 @@
 #!/bin/sh
 
-cd resources
-java -cp ../build/classes/main/ SecureClient CA.crt
+if [ "$#" -eq 0 ]
+then
+   echo Usage: $0 filename
+else
+    cd resources
+    java -cp ../build/classes/main/ SecureClient $1
+fi
+
