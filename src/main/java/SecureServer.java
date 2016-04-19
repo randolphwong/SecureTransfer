@@ -87,7 +87,7 @@ class ClientHandler implements Runnable {
 
             if (!clientMsg.equals("proof")) {
                 System.err.println("expected: \"proof\"");
-                System.exit(-1);
+                throw new RuntimeException();
             }
 
             // server send signed message ("server")
@@ -102,7 +102,7 @@ class ClientHandler implements Runnable {
             // server send X509Certifate
             if (!clientMsg.equals("cert")) {
                 System.err.println("expected: \"cert\"");
-                System.exit(-1);
+                throw new RuntimeException();
             }
             System.out.println("client requesting for cert");
             System.out.println("sending client cert");
@@ -118,7 +118,7 @@ class ClientHandler implements Runnable {
             clientMsg = socketInStream.secureReadUTF();
             if (!clientMsg.equals("file")) {
                 System.err.println("expected: \"file\"");
-                System.exit(-1);
+                throw new RuntimeException();
             }
 
             // server listen for filename
