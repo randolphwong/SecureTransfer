@@ -49,9 +49,27 @@ public class SecureOutputStream {
         outStream.write(msgToSend, 0, msgToSend.length);
     }
 
+    public void secureWriteObject(Object obj) throws IOException, IllegalBlockSizeException, BadPaddingException, ClassNotFoundException {
+        byte[] serialisedObj = Serializer.serialize(obj);
+        secureWriteLong((long) serialisedObj.length);
+        flush();
+
+        for (int i = 0; i < serialisedObj.length; i += 117) {
+            int remainingLen = serialisedObj.length - i;
+            byte[] toSend = new byte[remainingLen < 117 ? remainingLen : 117];
+            System.arraycopy(serialisedObj, i, toSend, 0, toSend.length);
+            secureWrite(toSend);
+            flush();
+        }
+    }
+
     public void secureWrite(byte[] b) throws IOException, IllegalBlockSizeException, BadPaddingException {
         msgToSend = rsaCipher.doFinal(b);
         outStream.write(msgToSend, 0, msgToSend.length);
+    }
+
+    public void write(byte[] b, int off, int len) throws IOException {
+        outStream.write(b, off, len);
     }
 
     public void flush() throws IOException {

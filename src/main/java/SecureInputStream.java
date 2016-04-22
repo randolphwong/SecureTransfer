@@ -53,6 +53,19 @@ public class SecureInputStream {
         return (Long) Serializer.deserialize(rsaCipher.doFinal(receivedMsg));
     }
 
+    public Object secureReadObject() throws IOException, IllegalBlockSizeException, BadPaddingException, ClassNotFoundException {
+        int objSize = (int)secureReadLong();
+        
+        byte[] decryptedObj = new byte[objSize];
+        byte[] received;
+        for (int i = 0; i < objSize; ) {
+            received = secureRead();
+            System.arraycopy(received, 0, decryptedObj, i, received.length);
+            i += received.length;
+        }
+        return Serializer.deserialize(decryptedObj);
+    }
+
     public byte[] secureRead() throws IOException, IllegalBlockSizeException, BadPaddingException {
         inStream.read(receivedMsg, 0, receivedMsg.length);
         return rsaCipher.doFinal(receivedMsg);

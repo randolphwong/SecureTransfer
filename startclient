@@ -1,12 +1,23 @@
-#!/bin/sh
+#!/bin/bash
 
-if [ "$#" -eq 0 ]
-then
-   echo Usage: $0 filename
+client=CpTwoClient
+
+if [ "$#" -eq 0 ]; then
+    echo Usage: $0 [aes rsa] filename
+    exit 1
+elif [ "$#" -eq 1 ]; then
+    file=$1
 else
-    base=$(basename $1)
-    abspath=$(cd "$(dirname "$1")"; pwd)"/"$base
-    cd resources
-    java -cp ../build/classes/main/ SecureClient "$abspath"
+    file=$2
+    if [ "${1,,}" = "rsa" ]; then
+        client=CpOneClient
+    elif [ "${1,,}" != "aes" ]; then
+        echo Usage: $0 [aes rsa] filename
+        exit 1
+    fi
 fi
 
+base=$(basename "$file")
+abspath=$(cd "$(dirname "$file")"; pwd)"/"$base
+cd resources
+java -cp ../build/classes/main/ $client "$abspath"

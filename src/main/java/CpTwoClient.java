@@ -1,25 +1,31 @@
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
+/**
+ * Created by User on 14/4/2016.
+ */
 import java.io.BufferedOutputStream;
-import java.io.BufferedInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.*;
 import java.net.Socket;
 
 import javax.crypto.Cipher;
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
+
 import java.security.*;
 import java.security.spec.*;
 import java.security.cert.*;
 
+import java.util.Arrays;
 import java.util.Random;
 
-public class SecureClient {
+public class CpTwoClient {
 
-    public final static int SOCKET_PORT = 4321;
-    public final static String SERVER = "localhost";
+    public final static int SOCKET_PORT = 4321;      // you may change this
+    public final static String SERVER_HOSTNAME = "localhost";  // localhost
     public final static String proofMsg = new String("proof");
     public final static String certMsg = new String("cert");
-    public final static String fileMsg = new String("file");
 
     public static X509Certificate getCert(String filename) throws Exception {
         X509Certificate cert = null;
@@ -36,7 +42,6 @@ public class SecureClient {
             cert.checkValidity();
             return cert.getSubjectX500Principal().toString().contains("randolph_wong@mymail.sutd.edu.sg");
         } catch (Exception e) {
-            e.printStackTrace();
             return false;
         }
     }
@@ -58,7 +63,7 @@ public class SecureClient {
         byte[] serverProof = new byte[128];
 
         try {
-            sock = new Socket(SERVER, SOCKET_PORT);
+            sock = new Socket(SERVER_HOSTNAME, SOCKET_PORT);
             System.out.println("Connected");
             socketOutStream = new SecureOutputStream(sock.getOutputStream());
             System.out.println("hi");
@@ -123,40 +128,40 @@ public class SecureClient {
                 System.out.println("verification failed");
                 System.exit(-1);
             }
+//****************************part 1 done******************************************************
 
-            // open file to transfer and determine how to split it for transmission
+            // generate AES and send to server
+            SecretKey key = KeyGenerator.getInstance("AES").generateKey();
+            socketOutStream.secureWriteObject(key);
+
+            // open file to send
             File file = new File(args[0]);
-            fileInStream = new BufferedInputStream(new FileInputStream(file));
- 
-            // client notify server that it will start sending files
-            System.out.println("sending to server: \"" + fileMsg + "\"");
-            socketOutStream.secureWriteUTF(fileMsg);
+            byte[] bFile = new byte[(int) file.length()];
+            FileInputStream fileInputStream = new FileInputStream(file);
+            fileInputStream.read(bFile);
+            fileInputStream.close();
+
+            // encrypt file with AES
+            Cipher ecipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
+            ecipher.init(Cipher.ENCRYPT_MODE, key);
+            byte[] encFile = ecipher.doFinal(bFile);
+
+            // send server the file name
+            String fileName = file.getName();
+            System.out.println("sending server file name: " + fileName);
+            socketOutStream.secureWriteUTF(fileName);
+
+            // send server the file size
+            System.out.println("sending server encrypted file length: "+encFile.length);
+            socketOutStream.secureWriteLong((long)encFile.length);
             socketOutStream.flush();
 
-            // client notify server of name of file
-            String filename = file.getName();
-            System.out.println("sending to server: \"" + filename + "\"");
-            socketOutStream.secureWriteUTF(filename);
-            socketOutStream.flush();
-
-            // send server file size
-            Long fileSize = file.length();
-            System.out.println("sending to server: \"" + fileSize + "\"");
-            socketOutStream.secureWriteLong(fileSize);
-            socketOutStream.flush();
-
-            // split files up, encrypt and send to server
-            byte[] filePart = new byte[117];
-            byte[] encryptedFilePart;
-            rsaCipher.init(Cipher.ENCRYPT_MODE, serverKey);
-
+            // send encrypted file
             long startTime, endTime;
             startTime = System.currentTimeMillis();
-
-            while ((bytesRead = fileInStream.read(filePart, 0, filePart.length)) > 0) {
-                socketOutStream.secureWrite(filePart);
-                socketOutStream.flush();
-            }
+            System.out.println("sending encrypted file to server");
+            socketOutStream.write(encFile,0,encFile.length);
+            socketOutStream.flush();
 
             // client listen for successful upload notification
             System.out.println("waiting for server's acknowledgement");
@@ -169,7 +174,6 @@ public class SecureClient {
             System.out.println("file successfully uploaded.");
             endTime = System.currentTimeMillis();
             System.out.println("upload time: " + (endTime - startTime) + " ms");
-
         } catch (Exception e) {
             e.printStackTrace();
         } finally {
@@ -179,5 +183,5 @@ public class SecureClient {
             if (sock != null) sock.close();
         }
     }
-}
 
+}

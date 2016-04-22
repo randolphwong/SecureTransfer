@@ -19,7 +19,7 @@ import java.security.*;
 import java.security.spec.*;
 import java.security.cert.*;
 
-public class SecureServer {
+public class CpOneServer {
 
     public final static int SOCKET_PORT = 4321;
     public static Key rsaPrivateKey;
@@ -43,6 +43,7 @@ public class SecureServer {
             servsock = new ServerSocket(SOCKET_PORT);
 
             while (true) {
+                System.out.println("waiting for connections...");
                 Socket sock = servsock.accept();
                 exec.submit(new ClientHandler(sock, ++i));
                 //new Thread(new ClientHandler(sock, ++i)).start();
@@ -77,8 +78,8 @@ class ClientHandler implements Runnable {
         try {
             socketOutStream = new SecureOutputStream(sock.getOutputStream());
             socketInStream = new SecureInputStream(sock.getInputStream());
-            socketOutStream.setupRSA(SecureServer.rsaPrivateKey);
-            socketInStream.setupRSA(SecureServer.rsaPrivateKey);
+            socketOutStream.setupRSA(CpOneServer.rsaPrivateKey);
+            socketInStream.setupRSA(CpOneServer.rsaPrivateKey);
 
             System.out.println("handling client " + id);
 
@@ -106,7 +107,7 @@ class ClientHandler implements Runnable {
             }
             System.out.println("client requesting for cert");
             System.out.println("sending client cert");
-            socketOutStream.writeCert(SecureServer.cert);
+            socketOutStream.writeCert(CpOneServer.cert);
 
             // server listen for nonce
             String nonce = socketInStream.secureReadUTF();
@@ -143,7 +144,7 @@ class ClientHandler implements Runnable {
                     fileOutStream.write(decryptedFilePart, 0, decryptedFilePart.length);
                 }
                 fileSize -= decryptedFilePart.length;
-                if (fileSize < 0) {
+                if (fileSize <= 0) {
                     break;
                 }
             }
